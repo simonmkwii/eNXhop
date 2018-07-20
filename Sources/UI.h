@@ -6,7 +6,7 @@
 
 namespace UI
 {
-    extern "C" Result nsInstallTitle(u64 tid, u32 unk, u8 storageId);
+    // extern "C" Result nsInstallTitle(u64 tid, u32 unk, u8 storageId);
     static SDL_Window *sdl_wnd;
     static SDL_Surface *sdl_surf;
     static SDL_Renderer *sdl_render;
@@ -22,8 +22,8 @@ namespace UI
     static int Opt1X = 55;
     static int Opt1Y = 115;
 
-    static int selected = 0;
-    static int idselected = 0;
+    static uint selected = 0;
+    static uint idselected = 0;
     static vector<string> options;
     static vector<string> idoptions;
     static vector<u64> ids;
@@ -82,25 +82,27 @@ namespace UI
     {
         SDL_RenderClear(sdl_render);
         DrawBack(sdls_Back, sdlt_Back);
-        DrawText(fntLarge, TitleX, TitleY, {0, 0, 0, 255}, "eNXhop - CDN title installer");
+        DrawText(fntLarge, TitleX, TitleY, {0, 0, 0, 255}, "FreeShopNX - CDN title installer");
         int ox = Opt1X;
         int oy = Opt1Y;
-        for(int i = 0; i < options.size(); i++)
+        uint start = (idselected / 9) * 9;
+        uint end = (start + 9 > idoptions.size()) ? idoptions.size() : start + 9;
+        for(uint i = 0; i < options.size(); i++)
         {
             if(i == selected)
             {
                 DrawText(fntMedium, ox, oy, {120, 120, 120, 255}, options[i].c_str());
                 if(i == 0)
                 {
-                    DrawText(fntSmall, 450, 575, {0, 0, 0, 255}, "Move between titles using L/R or ZL/ZR.");
+                    DrawText(fntSmall, 450, 575, {0, 0, 0, 255}, "Move between titles using Up/Down or Left/Right.");
                     DrawText(fntSmall, 450, 600, {0, 0, 0, 255}, "Select a title by pressing A.");
                     int fx = 450;
                     int fy = 150;
-                    for(int j = 0; j < idoptions.size(); j++)
+                    for(uint j = start; j < end; j++)
                     {
                         if(j == idselected)
                         {
-                            DrawText(fntMedium, fx, fy, {120, 120, 120, 255}, idoptions[j].c_str());
+                            DrawText(fntMedium, fx, fy, {255, 0, 0, 255}, idoptions[j].c_str());
                         }
                         else DrawText(fntMedium, fx, fy, {0, 0, 0, 255}, idoptions[j].c_str());
                         fy += 45;
@@ -118,50 +120,79 @@ namespace UI
         SDL_RenderPresent(sdl_render);
     }
 
-    void Loop()
+    int Loop()
     {
         hidScanInput();
         int k = hidKeysDown(CONTROLLER_P1_AUTO);
         if(k & KEY_UP)
         {
-            if(selected > 0) selected -= 1;
-            else selected = options.size() - 1;
-            Draw();
-        }
-        else if(k & KEY_DOWN)
-        {
-            if(selected < options.size() - 1) selected += 1;
-            else selected = 0;
-            Draw();
-        }
-        else if(k & KEY_L || k & KEY_R)
-        {
-            if(selected == 0)
+            if (selected == 0)
             {
-                if(idselected > 0) idselected -= 1;
-                else idselected = idoptions.size() - 1;
+                if (idselected > 0)
+                    idselected -= 1;
+                else
+                    idselected = idoptions.size() - 1;
                 Draw();
             }
         }
-        else if(k & KEY_ZL || k & KEY_ZR)
+        else if(k & KEY_DOWN)
+        {
+            if (selected == 0)
+            {
+                if (idselected < idoptions.size() - 1)
+                    idselected += 1;
+                else
+                    idselected = 0;
+                Draw();
+            }
+        }
+        else if(k & KEY_LEFT)
         {
             if(selected == 0)
+                if (selected == 0)
+                {
+                    if (idselected > 9)
+                        idselected -= 9;
+                    else
+                        idselected = 0;
+                    Draw();
+                }
+        }
+        else if(k & KEY_RIGHT)
+        {
+            if (selected == 0)
             {
-                if(idselected < idoptions.size() - 1) idselected += 1;
-                else idselected = 0;
+                if (idselected < idoptions.size() - 9)
+                    idselected += 9;
+                else
+                    idselected = idoptions.size() - 1;
                 Draw();
             }
         }
         else if(k & KEY_A)
         {
-            nsInitialize();
+            // nsInitialize();
             u64 id = ids[idselected];
-            Result res = nsInstallTitle(id, 0, (FsStorageId)5);
-            if(R_SUCCEEDED(res)) FooterText = "Title ID " + idoptions[idselected] + " started downloading!";
-            else FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
-            nsExit();
+            // Result res = nsInstallTitle(id, 0, (FsStorageId)5);
+            // if(R_SUCCEEDED(res)) FooterText = "Title ID " + idoptions[idselected] + " started downloading!";
+            // else FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
+            // nsExit();
+            char buf[256];
+            sprintf(buf, "Selected Title ID: %016lX", id);
+            FooterText = buf;
             Draw();
+        } else if (k & KEY_MINUS)
+        {
+            if (selected == 0)
+                selected = 1;
+            else
+                selected = 0;
+            Draw();
+        } else if (k & KEY_PLUS)
+        {
+            return 1;
         }
+        return 0;
     }
 
     void Init()
@@ -183,7 +214,7 @@ namespace UI
         options.push_back("Install title(s)");
         options.push_back("About eNXhop");
         FooterText = "Ready to download titles!";
-        ifstream ifs("sdmc:/switch/eNXhop.txt");
+        ifstream ifs("sdmc:/switch/eNXShop/eNXhop.txt");
         if(ifs.good())
         {
             string buf;

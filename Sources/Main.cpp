@@ -5,7 +5,8 @@ int main()
     UI::Init();
     while(appletMainLoop())
     {
-        UI::Loop();
+        if (UI::Loop())
+            break;
     }
     UI::Exit();
     return 0;

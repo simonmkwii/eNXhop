@@ -26,7 +26,10 @@ namespace UI
     static uint idselected = 0;
     static vector<string> options;
     static vector<string> idoptions;
-    static vector<u64> ids;
+    static vector<u64> titleIDs;
+    static vector<u8> masterKeys;
+    static vector<u64> titleKeys_high;
+    static vector<u64> titleKeys_low;
     static string FooterText;
 
     SDL_Surface *InitSurface(string Path)
@@ -97,7 +100,7 @@ namespace UI
                     DrawText(fntSmall, 450, 575, {0, 0, 0, 255}, "Move between titles using Up/Down or Left/Right.");
                     DrawText(fntSmall, 450, 600, {0, 0, 0, 255}, "Select a title by pressing A.");
                     int fx = 450;
-                    int fy = 150;
+                    int fy = 105;
                     for(uint j = start; j < end; j++)
                     {
                         if(j == idselected)
@@ -116,7 +119,7 @@ namespace UI
             else DrawText(fntMedium, ox, oy, {0, 0, 0, 255}, options[i].c_str());
             oy += 50;
         }
-        DrawText(fntLarge, TitleX, 660, {0, 0, 0, 255}, FooterText.c_str());
+        DrawText(fntMedium, TitleX, 660, {0, 0, 0, 255}, FooterText.c_str());
         SDL_RenderPresent(sdl_render);
     }
 
@@ -172,13 +175,18 @@ namespace UI
         else if(k & KEY_A)
         {
             // nsInitialize();
-            u64 id = ids[idselected];
+            u64 tid = titleIDs[idselected];
+
+            u8 mkey = masterKeys[idselected];
+            u64 tkeyh = titleKeys_high[idselected];
+            u64 tkeyl = titleKeys_low[idselected];
+
             // Result res = nsInstallTitle(id, 0, (FsStorageId)5);
             // if(R_SUCCEEDED(res)) FooterText = "Title ID " + idoptions[idselected] + " started downloading!";
             // else FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
             // nsExit();
             char buf[256];
-            sprintf(buf, "Selected Title ID: %016lX", id);
+            sprintf(buf, "TID: %016lx MKey: %02x TKey: %016lx%016lx", tid, mkey, tkeyh, tkeyl);
             FooterText = buf;
             Draw();
         } else if (k & KEY_MINUS)
@@ -220,10 +228,24 @@ namespace UI
             string buf;
             while(getline(ifs, buf))
             {
-                buf.pop_back();
-                u64 id = strtoull(buf.c_str(), NULL, 16);
-                ids.push_back(id);
-                idoptions.push_back(buf);
+                if (buf.empty())
+                    continue;
+                stringstream ss(buf);
+                string s_rightsID, s_titleKey, titleName;
+                getline(ss, s_rightsID, ',');
+                getline(ss, s_titleKey, ',');
+                getline(ss, titleName, ',');
+
+                u64 titleID = strtoull(s_rightsID.substr(0, 16).c_str(), NULL, 16);
+                u8 masterKey = stoul(s_rightsID.substr(16, 32).c_str(), NULL, 16);
+                u64 titleKey1 = strtoull(s_titleKey.substr(0, 16).c_str(), NULL, 16);
+                u64 titleKey2 = strtoull(s_titleKey.substr(16, 32).c_str(), NULL, 16);
+
+                titleIDs.push_back(titleID);
+                masterKeys.push_back(masterKey);
+                titleKeys_high.push_back(titleKey1);
+                titleKeys_low.push_back(titleKey2);
+                idoptions.push_back(titleName);
             }
         }
         ifs.close();

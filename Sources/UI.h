@@ -6,7 +6,6 @@
 
 namespace UI
 {
-    // extern "C" Result nsInstallTitle(u64 tid, u32 unk, u8 storageId);
     static SDL_Window *sdl_wnd;
     static SDL_Surface *sdl_surf;
     static SDL_Renderer *sdl_render;
@@ -31,6 +30,181 @@ namespace UI
     static vector<u64> titleKeys_high;
     static vector<u64> titleKeys_low;
     static string FooterText;
+
+    static Service g_esSrv;
+    static u64 g_esRefCnt;
+    static Service g_nsAppManSrv, g_nsGetterSrv;
+    static u64 g_nsRefCnt;
+
+    Result esInitialize()
+    {
+        atomicIncrement64(&g_esRefCnt);
+        Result rc = smGetService(&g_esSrv, "es");
+        return rc;
+    }
+
+    void esExit()
+    {
+        if (atomicDecrement64(&g_esRefCnt) == 0)
+        {
+            serviceClose(&g_esSrv);
+        }
+    }
+
+    Result esImportTicket(void const *tikBuf, size_t tikSize, void const *certBuf, size_t certSize)
+    {
+        IpcCommand c;
+        ipcInitialize(&c);
+        ipcAddSendBuffer(&c, tikBuf, tikSize, BufferType_Normal);
+        ipcAddSendBuffer(&c, certBuf, certSize, BufferType_Normal);
+
+        struct RAW
+        {
+            u64 magic;
+            u64 cmd_id;
+        } * raw;
+
+        raw = (struct RAW *)ipcPrepareHeader(&c, sizeof(*raw));
+        raw->magic = SFCI_MAGIC;
+        raw->cmd_id = 1;
+
+        Result rc = serviceIpcDispatch(&g_esSrv);
+
+        if (R_SUCCEEDED(rc))
+        {
+            IpcParsedCommand r;
+            ipcParse(&r);
+
+            struct RESP
+            {
+                u64 magic;
+                u64 result;
+            } *resp = (struct RESP *)r.Raw;
+
+            rc = resp->result;
+        }
+
+        return rc;
+    }
+
+    static Result _nsGetInterface(Service *srv_out, u64 cmd_id);
+
+    Result nsextInitialize(void)
+    {
+        Result rc = 0;
+
+        atomicIncrement64(&g_nsRefCnt);
+
+        if (serviceIsActive(&g_nsGetterSrv) || serviceIsActive(&g_nsAppManSrv))
+            return 0;
+
+        if (!kernelAbove300())
+            return smGetService(&g_nsAppManSrv, "ns:am");
+
+        rc = smGetService(&g_nsGetterSrv, "ns:am2"); //TODO: Support the other services?(Only useful when ns:am2 isn't accessible)
+        if (R_FAILED(rc))
+            return rc;
+
+        rc = _nsGetInterface(&g_nsAppManSrv, 7996);
+
+        if (R_FAILED(rc))
+            serviceClose(&g_nsGetterSrv);
+
+        return rc;
+    }
+
+    void nsextExit(void)
+    {
+        if (atomicDecrement64(&g_nsRefCnt) == 0)
+        {
+            serviceClose(&g_nsAppManSrv);
+            if (!kernelAbove300())
+                return;
+
+            serviceClose(&g_nsGetterSrv);
+        }
+    }
+
+    static Result _nsGetInterface(Service *srv_out, u64 cmd_id)
+    {
+        IpcCommand c;
+        ipcInitialize(&c);
+
+        struct RAW
+        {
+            u64 magic;
+            u64 cmd_id;
+        } * raw;
+
+        raw = (struct RAW *)ipcPrepareHeader(&c, sizeof(*raw));
+
+        raw->magic = SFCI_MAGIC;
+        raw->cmd_id = cmd_id;
+
+        Result rc = serviceIpcDispatch(&g_nsGetterSrv);
+
+        if (R_SUCCEEDED(rc))
+        {
+            IpcParsedCommand r;
+            ipcParse(&r);
+
+            struct RESP
+            {
+                u64 magic;
+                u64 result;
+            } *resp = (struct RESP *)r.Raw;
+
+            rc = resp->result;
+
+            if (R_SUCCEEDED(rc))
+            {
+                serviceCreate(srv_out, r.Handles[0]);
+            }
+        }
+
+        return rc;
+    }
+
+    Result nsBeginInstallApplication(u64 tid, u32 unk, u8 storageId)
+    {
+        IpcCommand c;
+        ipcInitialize(&c);
+
+        struct RAW
+        {
+            u64 magic;
+            u64 cmd_id;
+            u32 storageId;
+            u32 unk;
+            u64 tid;
+        } * raw;
+
+        raw = (struct RAW *)ipcPrepareHeader(&c, sizeof(*raw));
+
+        raw->magic = SFCI_MAGIC;
+        raw->cmd_id = 26;
+        raw->storageId = storageId;
+        raw->unk = unk;
+        raw->tid = tid;
+
+        Result rc = serviceIpcDispatch(&g_nsAppManSrv);
+
+        if (R_SUCCEEDED(rc))
+        {
+            IpcParsedCommand r;
+            ipcParse(&r);
+
+            struct RESP
+            {
+                u64 magic;
+                u64 result;
+            } *resp = (struct RESP *)r.Raw;
+
+            rc = resp->result;
+        }
+
+        return rc;
+    }
 
     SDL_Surface *InitSurface(string Path)
     {
@@ -88,8 +262,8 @@ namespace UI
         DrawText(fntLarge, TitleX, TitleY, {0, 0, 0, 255}, "FreeShopNX - CDN title installer");
         int ox = Opt1X;
         int oy = Opt1Y;
-        uint start = (idselected / 9) * 9;
-        uint end = (start + 9 > idoptions.size()) ? idoptions.size() : start + 9;
+        uint start = (idselected / 10) * 10;
+        uint end = (start + 10 > idoptions.size()) ? idoptions.size() : start + 10;
         for(uint i = 0; i < options.size(); i++)
         {
             if(i == selected)
@@ -97,8 +271,8 @@ namespace UI
                 DrawText(fntMedium, ox, oy, {120, 120, 120, 255}, options[i].c_str());
                 if(i == 0)
                 {
-                    DrawText(fntSmall, 450, 575, {0, 0, 0, 255}, "Move between titles using Up/Down or Left/Right.");
-                    DrawText(fntSmall, 450, 600, {0, 0, 0, 255}, "Select a title by pressing A.");
+                    DrawText(fntSmall, 450, 575, {0, 0, 0, 255}, "Scroll: Up/Down  |  Jump 10: Left/Right  |  Jump 50: L/R");
+                    DrawText(fntSmall, 450, 600, {0, 0, 0, 255}, "A: Select  |  -: About  |  +: Exit");
                     int fx = 450;
                     int fy = 105;
                     for(uint j = start; j < end; j++)
@@ -113,7 +287,7 @@ namespace UI
                 }
                 else if(i == 1)
                 {
-                    DrawText(fntLarge, 610, 330, {0, 0, 255, 255}, "eNXhop, enjoy installing titles!");
+                    DrawText(fntLarge, 610, 330, {0, 0, 255, 255}, "Warning: You may be banned.\nCredits: AnalogMan, Adubbz,\nXorTroll, Reisyukaku,\nSimonMKWii");
                 }
             }
             else DrawText(fntMedium, ox, oy, {0, 0, 0, 255}, options[i].c_str());
@@ -144,11 +318,11 @@ namespace UI
         tkeyl = byteswap(tkeyl);
         
 
-        ifstream tik("sdmc:/switch/eNXShop/Ticket.tik", ios::in | ios::binary);
+        ifstream tik("sdmc:/switch/FreeShopNX/Ticket.tik", ios::in | ios::binary);
         tik.read(tikBuf, tikBuf_size);
         tik.close();
 
-        ifstream cert("sdmc:/switch/eNXShop/Certificate.cert", ios::in | ios::binary);
+        ifstream cert("sdmc:/switch/FreeShopNX/Certificate.cert", ios::in | ios::binary);
         cert.read(certBuf, certBuf_size);
         cert.close();
 
@@ -159,21 +333,17 @@ namespace UI
         memcpy(tikBuf+0x2A0, &tid, 8);
         memcpy(tikBuf+0x2AF, &mkey, 1);
 
-        // if (R_FAILED(rc = esImportTicket(tikBuf, tikBuf_size, certBuf, certBuf_size)))
-        // {
-        //     return rc;
-        // }
-
+        if (R_FAILED(rc = esImportTicket(tikBuf, tikBuf_size, certBuf, certBuf_size)))
+        {
+            return rc;
+        }
             return rc;
     }
 
     int nsInstallTitle(u64 id)
     {
-        // nsInitialize();
-        // Result res = nsInstallTitle(id, 0, (FsStorageId)5);
-        // nsExit();
-        // return res;
-        return 0;
+        Result res = nsBeginInstallApplication(id, 0, (FsStorageId)5);
+        return res;
     }
 
     int Loop()
@@ -207,8 +377,8 @@ namespace UI
             if(selected == 0)
                 if (selected == 0)
                 {
-                    if (idselected > 9)
-                        idselected -= 9;
+                    if (idselected > 10)
+                        idselected -= 10;
                     else
                         idselected = 0;
                     Draw();
@@ -218,8 +388,31 @@ namespace UI
         {
             if (selected == 0)
             {
-                if (idselected < idoptions.size() - 9)
-                    idselected += 9;
+                if (idselected < idoptions.size() - 10)
+                    idselected += 10;
+                else
+                    idselected = idoptions.size() - 1;
+                Draw();
+            }
+        }
+        else if (k & KEY_L)
+        {
+            if (selected == 0)
+                if (selected == 0)
+                {
+                    if (idselected > 50)
+                        idselected -= 50;
+                    else
+                        idselected = 0;
+                    Draw();
+                }
+        }
+        else if (k & KEY_R)
+        {
+            if (selected == 0)
+            {
+                if (idselected < idoptions.size() - 50)
+                    idselected += 50;
                 else
                     idselected = idoptions.size() - 1;
                 Draw();
@@ -241,7 +434,7 @@ namespace UI
                 FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
             } else
             {
-                sprintf(buf, "TID: %016lx MKey: %02x TKey: %016lx%016lx", tid, mkey, tkeyh, tkeyl);
+                sprintf(buf, "Download started for %016lx. Press + to exit or select another.", tid);
                 FooterText = buf;
             }
             Draw();
@@ -275,10 +468,11 @@ namespace UI
         fntSmall = TTF_OpenFont("romfs:/Fonts/Roboto-Regular.ttf", 20);
         sdls_Back = InitSurface(Back);
         sdlt_Back = InitTexture(sdls_Back);
-        options.push_back("Install title(s)");
-        options.push_back("About eNXhop");
+        options.push_back("Install titles");
+        options.push_back("About FreeShopNX");
         FooterText = "Ready to download titles!";
-        ifstream ifs("sdmc:/switch/eNXShop/eNXhop.txt");
+        Draw();
+        ifstream ifs("sdmc:/switch/FreeShopNX/FreeShopNX.txt");
         if(ifs.good())
         {
             string buf;
@@ -304,7 +498,6 @@ namespace UI
                 idoptions.push_back(titleName);
             }
         } else {
-            ifs.close();
             return 1;
         }
         ifs.close();

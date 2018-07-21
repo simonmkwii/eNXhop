@@ -24,4 +24,5 @@
 #include <dirent.h>
 #include <random>
 #include <switch.h>
+#include <switch/arm/atomics.h>
 using namespace std;

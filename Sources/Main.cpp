@@ -2,7 +2,11 @@
 
 int main()
 {
-    UI::Init();
+    if (UI::Init())
+    {
+        UI::Exit();
+        return 1;
+    }
     while(appletMainLoop())
     {
         if (UI::Loop())

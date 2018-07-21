@@ -123,6 +123,59 @@ namespace UI
         SDL_RenderPresent(sdl_render);
     }
 
+    unsigned long int byteswap(unsigned long int x)
+    {
+        x = (x & 0x00000000FFFFFFFF) << 32 | (x & 0xFFFFFFFF00000000) >> 32;
+        x = (x & 0x0000FFFF0000FFFF) << 16 | (x & 0xFFFF0000FFFF0000) >> 16;
+        x = (x & 0x00FF00FF00FF00FF) << 8 | (x & 0xFF00FF00FF00FF00) >> 8;
+        return x;
+    }
+
+    int installTikCert(u64 tid, u8 mkey, u64 tkeyh, u64 tkeyl)
+    {
+        Result rc = 0;
+        int tikBuf_size = 704;
+        char* tikBuf = new char[tikBuf_size];
+        int certBuf_size = 1792;
+        char* certBuf = new char[certBuf_size];
+
+        tid = byteswap(tid);
+        tkeyh = byteswap(tkeyh);
+        tkeyl = byteswap(tkeyl);
+        
+
+        ifstream tik("sdmc:/switch/eNXShop/Ticket.tik", ios::in | ios::binary);
+        tik.read(tikBuf, tikBuf_size);
+        tik.close();
+
+        ifstream cert("sdmc:/switch/eNXShop/Certificate.cert", ios::in | ios::binary);
+        cert.read(certBuf, certBuf_size);
+        cert.close();
+
+        // patch TIK with title data
+        memcpy(tikBuf+0x180, &tkeyh, 8);
+        memcpy(tikBuf+0x188, &tkeyl, 8);
+        memcpy(tikBuf+0x286, &mkey, 1);
+        memcpy(tikBuf+0x2A0, &tid, 8);
+        memcpy(tikBuf+0x2AF, &mkey, 1);
+
+        // if (R_FAILED(rc = esImportTicket(tikBuf, tikBuf_size, certBuf, certBuf_size)))
+        // {
+        //     return rc;
+        // }
+
+            return rc;
+    }
+
+    int nsInstallTitle(u64 id)
+    {
+        // nsInitialize();
+        // Result res = nsInstallTitle(id, 0, (FsStorageId)5);
+        // nsExit();
+        // return res;
+        return 0;
+    }
+
     int Loop()
     {
         hidScanInput();
@@ -174,20 +227,23 @@ namespace UI
         }
         else if(k & KEY_A)
         {
-            // nsInitialize();
             u64 tid = titleIDs[idselected];
-
             u8 mkey = masterKeys[idselected];
             u64 tkeyh = titleKeys_high[idselected];
             u64 tkeyl = titleKeys_low[idselected];
 
-            // Result res = nsInstallTitle(id, 0, (FsStorageId)5);
-            // if(R_SUCCEEDED(res)) FooterText = "Title ID " + idoptions[idselected] + " started downloading!";
-            // else FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
-            // nsExit();
             char buf[256];
-            sprintf(buf, "TID: %016lx MKey: %02x TKey: %016lx%016lx", tid, mkey, tkeyh, tkeyl);
-            FooterText = buf;
+            if (installTikCert(tid, mkey, tkeyh, tkeyl))
+            {
+                FooterText =  "Cert & Tik install failed!";
+            } else if (nsInstallTitle(tid))
+            {
+                FooterText = "Error downloading title ID " + idoptions[idselected] + ".";
+            } else
+            {
+                sprintf(buf, "TID: %016lx MKey: %02x TKey: %016lx%016lx", tid, mkey, tkeyh, tkeyl);
+                FooterText = buf;
+            }
             Draw();
         } else if (k & KEY_MINUS)
         {
@@ -203,7 +259,7 @@ namespace UI
         return 0;
     }
 
-    void Init()
+    int Init()
     {
         romfsInit();
         SDL_Init(SDL_INIT_EVERYTHING);
@@ -247,9 +303,13 @@ namespace UI
                 titleKeys_low.push_back(titleKey2);
                 idoptions.push_back(titleName);
             }
+        } else {
+            ifs.close();
+            return 1;
         }
         ifs.close();
         Draw();
+        return 0;
     }
 
     void Exit()

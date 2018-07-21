@@ -2,6 +2,7 @@
 Nintendo Switch CDN title installer, based on Rei's BogInstaller (evolution of eNXhop)
 
 Requirements:
+* Sig Patches (SX OS)
 * `sdmc:/switch/FreeShopNX/FreeShopNX.nro`
 * `sdmc:/switch/FreeShopNX/Ticket.tik`
 * `sdmc:/switch/FreeShopNX/Certificate.cert`

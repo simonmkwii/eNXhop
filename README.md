@@ -26,4 +26,4 @@ No TItle Keys or completed `FreeShopNX.txt` file will be provided from this repo
 
 Credits to Adubbz for Tik and Cert installation with TinFoil, XorTool for the eNXhop base and UI, Reisyukaku for on-system title installation via BogInstaller, and SimonMKWii for the icon.
 
-Note: You'll probably get banned. 
+Note: You'll get banned. 
